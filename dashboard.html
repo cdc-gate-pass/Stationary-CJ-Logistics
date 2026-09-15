@@ -166,7 +166,7 @@ function tursoRows(r) {
   if (!r || !r.cols || !r.rows) return [];
   return r.rows.map(row => {
     const obj = {};
-    r.cols.forEach((col, i) => { obj[col.name] = row[i]; });
+    r.cols.forEach((col, i) => { obj[col.name] = row[i] && row[i].value !== undefined ? row[i].value : row[i]; });
     return obj;
   });
 }
