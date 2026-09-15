@@ -1,8 +1,6 @@
 {
   "rewrites": [
-    { "source": "/", "destination": "/requisition.html" },
-    { "source": "/dashboard", "destination": "/dashboard.html" },
-    { "source": "/dashboard.html", "destination": "/dashboard.html" }
+    { "source": "/", "destination": "/requisition.html" }
   ],
   "headers": [
     {

@@ -1078,7 +1078,7 @@
       <button class="admin-tab" onclick="switchAdminTab('products')">📦 สินค้า</button>
       <button class="admin-tab" onclick="switchAdminTab('orders')">📋 คำสั่งซื้อ</button>
       <button class="admin-tab" onclick="switchAdminTab('stock')">📊 สต็อก</button>
-      <button class="admin-tab" onclick="switchAdminTab('report')">📑 รีพอท</button>
+      <button class="admin-tab" onclick="switchAdminTab('report')">📑 ประวัติ/Export</button>
       <button class="admin-tab" onclick="switchAdminTab('tools')">🔧 เครื่องมือ</button>
     </div>
 
@@ -1236,7 +1236,7 @@
     <!-- Tab: Tools -->
     <div class="admin-tab-content" id="tabReport" style="display:none">
       <div style="background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)">
-        <h3 style="font-size:14px;margin-bottom:12px;color:var(--muted)">📑 รายงานสต็อกย้อนหลัง</h3>
+        <h3 style="font-size:14px;margin-bottom:12px;color:var(--muted)">📑 ประวัติการเพิ่มสต๊อก / ประวัติการเบิกของ</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
           <div><label style="font-size:11px;color:var(--muted)">จาก</label><br><input type="date" id="repFrom" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit"></div>
           <div><label style="font-size:11px;color:var(--muted)">ถึง</label><br><input type="date" id="repTo" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit"></div>
@@ -1254,6 +1254,11 @@
           <button class="admin-tab" onclick="setQuickRange('month')">เดือนนี้</button>
           <button class="admin-tab" onclick="setQuickRange('lastmonth')">เดือนก่อน</button>
         </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+          <button class="admin-tab" onclick="setQuickType('')">📋 ทั้งหมด</button>
+          <button class="admin-tab" onclick="setQuickType('restock')">📦 ประวัติการเพิ่มสต๊อก</button>
+          <button class="admin-tab" onclick="setQuickType('requisition')">📤 ประวัติการเบิกของ</button>
+        </div>
         <div id="reportResult" style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:10px"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">เลือกช่วงวันที่แล้วกด ดูรายงาน</div></div>
       </div>
     </div><!-- /tabReport -->
@@ -1261,10 +1266,8 @@
     <!-- Monthly Summary -->
     <div style="margin-bottom:18px;background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);text-align:center">
       <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-        <a href="dashboard.html" target="_blank" class="btn btn-primary" style="padding:10px 24px;font-size:14px;text-decoration:none;display:inline-block">📊 เปิด Dashboard</a>
         <button class="btn btn-primary" onclick="sendMonthlySummary()" style="padding:10px 24px;font-size:14px">📧 ส่งอีเมลสรุปสิ้นเดือน</button>
       </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:6px">Dashboard มีกราฟ ตาราง และสถิติครบถ้วน</div>
     </div>
 
     <!-- Clear Data Section -->
@@ -2032,6 +2035,10 @@ function setQuickRange(kind) {
   if (kind === 'month') { from.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1)); to.value = fmt(now); }
   else if (kind === 'lastmonth') { from.value = fmt(new Date(now.getFullYear(), now.getMonth()-1, 1)); to.value = fmt(new Date(now.getFullYear(), now.getMonth(), 0)); }
   else { from.value = fmt(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (kind-1))); to.value = fmt(now); }
+  runStockReport();
+}
+function setQuickType(type) {
+  document.getElementById('repType').value = type;
   runStockReport();
 }
 async function runStockReport() {

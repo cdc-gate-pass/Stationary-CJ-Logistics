@@ -1,5 +1,5 @@
 // Stationary CJ Logistices Service Worker — offline caching
-const CACHE_NAME = 'stationary-cj-v2';
+const CACHE_NAME = 'stationary-cj-v3';
 const ASSETS = [
   './',
   './requisition.html',
