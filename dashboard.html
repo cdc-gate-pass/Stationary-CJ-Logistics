@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>📊 Dashboard — Stationary CJ Logistices</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <style>
   :root {
     --primary: #6c5ce7;
@@ -223,7 +223,8 @@ function renderDashboard(orders, history, month) {
   const totalRestockQty = restocks.reduce((s, h) => s + h.qty, 0);
   const totalRequisitionQty = requisitions.reduce((s, h) => s + Math.abs(h.qty), 0);
 
-  // Unique requesters      const uniqueRequesters = new Set(orders.map(o => o.emp_id)).size;
+  // Unique requesters
+  const uniqueRequesters = new Set(orders.map(o => o.emp_id)).size;
 
   const monthNames = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
   const [y, m] = month.split('-');
@@ -293,11 +294,12 @@ function renderDashboard(orders, history, month) {
 
   el.innerHTML = html;
 
-  // Render charts
-  renderCharts(orders, history);
+  // Render charts (wrapped in try/catch so dashboard still shows cards+tables if Chart.js fails)
+  try { renderCharts(orders, history); } catch(e) { console.warn('Chart render skipped:', e); }
 }
 
 function renderCharts(orders, history) {
+  if (typeof Chart === 'undefined') { console.warn('Chart.js not loaded'); return; }
   // Destroy old charts
   Object.values(charts).forEach(c => c.destroy());
   charts = {};
