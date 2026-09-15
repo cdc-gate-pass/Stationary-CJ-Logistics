@@ -152,19 +152,27 @@ let charts = {};
 async function turso(sql, args) {
   const stmt = args ? { sql, args } : { sql };
   const body = { requests: [{ type: 'execute', stmt }, { type: 'close' }] };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
   try {
     const res = await fetch(TURSO_URL, {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + TURSO_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: controller.signal
     });
+    clearTimeout(timer);
     const json = await res.json();
     if (json.results && json.results[0] && json.results[0].type === 'ok') {
       return json.results[0].response.result;
     }
     console.error('Turso query failed:', JSON.stringify(json).substring(0, 300));
-    return { cols: [], rows: [] };
-  } catch (e) { console.error('Turso error:', e); return { cols: [], rows: [] }; }
+    throw new Error('Turso query failed');
+  } catch (e) {
+    clearTimeout(timer);
+    console.error('Turso error:', e);
+    throw e;
+  }
 }
 function tursoRows(r) {
   if (!r || !r.cols || !r.rows) return [];
@@ -199,6 +207,7 @@ async function loadDashboard() {
       turso('SELECT * FROM orders ORDER BY id DESC'),
       turso('SELECT * FROM stock_history ORDER BY id DESC')
     ]);
+    console.log('Dashboard: data loaded OK');
     allProducts = tursoRows(prodR);
     allOrders = tursoRows(orderR);
     allHistory = tursoRows(histR);
@@ -212,7 +221,7 @@ async function loadDashboard() {
     allHistory.forEach(h => { h.qty = Number(h.qty) || 0; h.balance = Number(h.balance) || 0; });
   } catch (e) {
     console.error('Load error:', e);
-    document.getElementById('dashboardContent').innerHTML = '<div class="loading"><p style="color:#c0392b">❌ โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e) + '</p><p style="font-size:12px;color:#636e72;margin-top:8px">ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วรีเฟรชหน้า</p></div>';
+    document.getElementById('dashboardContent').innerHTML = '<div class="loading"><p style="color:#c0392b;font-size:18px">❌ โหลดข้อมูลไม่สำเร็จ</p><p style="font-size:13px;color:#636e72;margin-top:8px">' + (e.name === 'AbortError' ? 'หมดเวลาเชื่อมต่อฐานข้อมูล — อาจเกิดจากเครือข่าย/VPN' : (e.message || e)) + '</p><button onclick="loadDashboard()" style="margin-top:14px;padding:10px 24px;border:none;border-radius:10px;background:#6c5ce7;color:#fff;font-weight:600;cursor:pointer">🔄 ลองใหม่</button></div>';
     return;
   }
 
