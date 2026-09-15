@@ -1078,6 +1078,7 @@
       <button class="admin-tab" onclick="switchAdminTab('products')">📦 สินค้า</button>
       <button class="admin-tab" onclick="switchAdminTab('orders')">📋 คำสั่งซื้อ</button>
       <button class="admin-tab" onclick="switchAdminTab('stock')">📊 สต็อก</button>
+      <button class="admin-tab" onclick="switchAdminTab('report')">📑 รีพอท</button>
       <button class="admin-tab" onclick="switchAdminTab('tools')">🔧 เครื่องมือ</button>
     </div>
 
@@ -1233,6 +1234,29 @@
     </div><!-- /tabStock -->
 
     <!-- Tab: Tools -->
+    <div class="admin-tab-content" id="tabReport" style="display:none">
+      <div style="background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)">
+        <h3 style="font-size:14px;margin-bottom:12px;color:var(--muted)">📑 รายงานสต็อกย้อนหลัง</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <div><label style="font-size:11px;color:var(--muted)">จาก</label><br><input type="date" id="repFrom" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit"></div>
+          <div><label style="font-size:11px;color:var(--muted)">ถึง</label><br><input type="date" id="repTo" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit"></div>
+          <div style="flex:1;min-width:150px"><label style="font-size:11px;color:var(--muted)">สินค้า</label><br><input type="text" id="repProduct" list="repProductList" placeholder="ทั้งหมด / พิมพ์ค้นหา" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit"><datalist id="repProductList"></datalist></div>
+          <div><label style="font-size:11px;color:var(--muted)">ประเภท</label><br><select id="repType" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:8px;font-family:inherit"><option value="">ทั้งหมด</option><option value="requisition">เบิก</option><option value="deduct">เบิก (deduct)</option><option value="restock">เติม</option></select></div>
+          <div style="display:flex;align-items:flex-end;gap:6px">
+            <button class="btn btn-primary" onclick="runStockReport()" style="padding:8px 16px;font-size:13px">🔍 ดูรายงาน</button>
+            <button class="btn btn-outline" onclick="exportReportCSV()" style="padding:8px 16px;font-size:13px">📥 CSV</button>
+            <button class="btn btn-outline" onclick="window.print()" style="padding:8px 16px;font-size:13px">🖨️ พิมพ์</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="admin-tab" onclick="setQuickRange(7)">7 วัน</button>
+          <button class="admin-tab" onclick="setQuickRange(30)">30 วัน</button>
+          <button class="admin-tab" onclick="setQuickRange('month')">เดือนนี้</button>
+          <button class="admin-tab" onclick="setQuickRange('lastmonth')">เดือนก่อน</button>
+        </div>
+        <div id="reportResult" style="max-height:300px;overflow:auto;border:1px solid var(--border);border-radius:10px"><div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">เลือกช่วงวันที่แล้วกด ดูรายงาน</div></div>
+      </div>
+    </div><!-- /tabReport -->
     <div class="admin-tab-content" id="tabTools" style="display:none">
     <!-- Monthly Summary -->
     <div style="margin-bottom:18px;background:var(--card);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);text-align:center">
@@ -1983,7 +2007,7 @@ function closeAdmin() { isAdmin = false; document.getElementById('adminOverlay')
 
 // --- Admin Tabs ---
 function switchAdminTab(tab) {
-  var tabs = ['settings', 'products', 'orders', 'stock', 'tools'];
+  var tabs = ['settings', 'products', 'orders', 'stock', 'report', 'tools'];
   var idx = tabs.indexOf(tab);
   document.querySelectorAll('.admin-tab').forEach(function(b, i) { b.classList.toggle('active', i === idx); });
   document.querySelectorAll('.admin-tab-content').forEach(function(el) { el.style.display = 'none'; });
@@ -1992,6 +2016,82 @@ function switchAdminTab(tab) {
   if (tabEl) tabEl.style.display = '';
   if (tab === 'orders') renderAdminOrders();
   if (tab === 'stock') { populateRestockDropdown(); renderStockHistory(); }
+  if (tab === 'report') { populateReportProducts(); setQuickRange('month'); }
+}
+
+// --- Stock Report (backward lookup) ---
+let reportRows = [];
+function populateReportProducts() {
+  const dl = document.getElementById('repProductList');
+  if (dl) dl.innerHTML = PRODUCTS.map(p => '<option value="' + esc(p.name) + '">').join('');
+}
+function setQuickRange(kind) {
+  const from = document.getElementById('repFrom'), to = document.getElementById('repTo');
+  const now = new Date();
+  const fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  if (kind === 'month') { from.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1)); to.value = fmt(now); }
+  else if (kind === 'lastmonth') { from.value = fmt(new Date(now.getFullYear(), now.getMonth()-1, 1)); to.value = fmt(new Date(now.getFullYear(), now.getMonth(), 0)); }
+  else { from.value = fmt(new Date(now.getFullYear(), now.getMonth(), now.getDate() - (kind-1))); to.value = fmt(now); }
+  runStockReport();
+}
+async function runStockReport() {
+  const from = document.getElementById('repFrom').value;
+  const to = document.getElementById('repTo').value;
+  const prodName = (document.getElementById('repProduct').value || '').trim();
+  const type = document.getElementById('repType').value;
+  const box = document.getElementById('reportResult');
+  box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">⏳ กำลังโหลด...</div>';
+  let sql = "SELECT * FROM stock_history WHERE date >= '" + from + "' AND date <= '" + to + "'";
+  if (type) sql += " AND type = '" + type + "'";
+  sql += ' ORDER BY date DESC, id DESC';
+  let rows;
+  try { rows = tursoRows(await turso(sql)); }
+  catch(e) { box.innerHTML = '<div style="padding:20px;text-align:center;color:#c0392b;font-size:13px">❌ โหลดไม่สำเร็จ: ' + esc(e.message || e) + '</div>'; return; }
+  if (prodName) rows = rows.filter(r => (r.product_name || '').includes(prodName) || (r.product_code || '').toLowerCase() === prodName.toLowerCase());
+  reportRows = rows;
+  if (!rows.length) { box.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">ไม่พบรายการในช่วงนี้</div>'; return; }
+  const totalIn = rows.filter(r => r.type === 'restock').reduce((s, r) => s + Number(r.qty || 0), 0);
+  const totalOut = rows.filter(r => r.type !== 'restock').reduce((s, r) => s + Math.abs(Number(r.qty || 0)), 0);
+  let html = '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="position:sticky;top:0;background:#f5f6fa">' +
+    '<th style="padding:6px 8px;text-align:left;border-bottom:2px solid var(--border)">วันที่</th>' +
+    '<th style="padding:6px 8px;text-align:left;border-bottom:2px solid var(--border)">รหัส</th>' +
+    '<th style="padding:6px 8px;text-align:left;border-bottom:2px solid var(--border)">สินค้า</th>' +
+    '<th style="padding:6px 8px;text-align:left;border-bottom:2px solid var(--border)">ประเภท</th>' +
+    '<th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border)">จำนวน</th>' +
+    '<th style="padding:6px 8px;text-align:right;border-bottom:2px solid var(--border)">คงเหลือ</th>' +
+    '<th style="padding:6px 8px;text-align:left;border-bottom:2px solid var(--border)">โดย</th>' +
+    '<th style="padding:6px 8px;text-align:left;border-bottom:2px solid var(--border)">หมายเหตุ</th></tr></thead><tbody>';
+  rows.forEach(r => {
+    const isRestock = r.type === 'restock';
+    const qty = Number(r.qty || 0);
+    html += '<tr>' +
+      '<td style="padding:5px 8px;border-bottom:1px solid #f1f3f6">' + esc(r.date || '') + '</td>' +
+      '<td style="padding:5px 8px;border-bottom:1px solid #f1f3f6">' + esc(r.product_code || '') + '</td>' +
+      '<td style="padding:5px 8px;border-bottom:1px solid #f1f3f6">' + esc(r.product_name || '') + '</td>' +
+      '<td style="padding:5px 8px;border-bottom:1px solid #f1f3f6"><span style="background:' + (isRestock ? '#e8f4fd;color:#0984e3' : '#fff3e6;color:#e17055') + ';padding:1px 7px;border-radius:6px;font-size:11px;font-weight:600">' + (isRestock ? 'เติม' : 'เบิก') + '</span></td>' +
+      '<td style="padding:5px 8px;border-bottom:1px solid #f1f3f6;text-align:right;font-weight:700;color:' + (isRestock ? 'var(--green)' : 'var(--red)') + '">' + (isRestock ? '+' : '') + qty + '</td>' +
+      '<td style="padding:5px 8px;border-bottom:1px solid #f1f3f6;text-align:right">' + esc(r.balance || 0) + '</td>' +
+      '<td style="padding:5px 8px;border-bottom:1px solid #f1f3f6">' + esc(r.by_whom || '') + '</td>' +
+      '<td style="padding:5px 8px;border-bottom:1px solid #f1f3f6;font-size:11px">' + esc(r.note || '') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="display:flex;gap:16px;padding:10px 12px;background:#f8f9fd;border-top:2px solid var(--border);font-size:12px;font-weight:700"><span style="color:var(--green)">รวมเติม: +' + totalIn + '</span><span style="color:var(--red)">รวมเบิก: -' + totalOut + '</span><span>รายการ: ' + rows.length + '</span></div>';
+  box.innerHTML = html;
+}
+function exportReportCSV() {
+  if (!reportRows.length) { showToast('⚠️ ไม่มีข้อมูลให้ export'); return; }
+  const header = ['วันที่','รหัส','สินค้า','ประเภท','จำนวน','คงเหลือ','โดย','หมายเหตุ'];
+  const lines = [header.join(',')];
+  reportRows.forEach(r => {
+    const row = [r.date || '', r.product_code || '', '"' + (r.product_name || '').replace(/"/g,'""') + '"', r.type === 'restock' ? 'เติม' : 'เบิก', r.qty || 0, r.balance || 0, '"' + (r.by_whom || '') + '"', '"' + (r.note || '').replace(/"/g,'""') + '"'];
+    lines.push(row.join(','));
+  });
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'stock-report_' + document.getElementById('repFrom').value + '_to_' + document.getElementById('repTo').value + '.csv';
+  a.click();
+  showToast('✅ ดาวน์โหลด CSV แล้ว');
 }
 
 // --- Logo Settings ---
