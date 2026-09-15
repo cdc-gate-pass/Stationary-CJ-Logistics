@@ -1650,6 +1650,7 @@ function placeOrder() {
   const name = document.getElementById('coName').value.trim();
   const reqType = document.getElementById('coReqType').value;
   if (!empId || !name || !reqType) { showToast('⚠️ กรุณากรอกข้อมูลให้ครบ'); return; }
+  if (!cart.length) { showToast('⚠️ ตะกร้าว่าง — กรุณาเลือกสินค้า'); return; }
   const items = cart.map(c => {
     const p = PRODUCTS.find(pr => pr.id === c.productId);
     return { productId: c.productId, name: p.name, emoji: p.emoji, price: p.price, qty: c.qty };
@@ -1663,17 +1664,19 @@ function placeOrder() {
     status: 'pending'
   };
   orders.unshift(newOrder);
-  saveOrderToBackend(newOrder);
+  saveOrderToBackend(newOrder).then(ok => {
+    if (!ok) showToast('⚠️ บันทึกลงฐานข้อมูลไม่สำเร็จ — โปรดแจ้งผู้ดูแล');
+  }).catch(() => showToast('⚠️ บันทึกลงฐานข้อมูลไม่สำเร็จ — โปรดแจ้งผู้ดูแล'));
   // Decrement stock
   const stockUpdates = [];
   cart.forEach(c => {
     const p = PRODUCTS.find(pr => pr.id === c.productId);
     if (p) {
       p.stock = Math.max(0, p.stock - c.qty);
-      stockUpdates.push({ id: p.id, stock: p.stock });
+      stockUpdates.push({ id: p.id, stock: p.stock, qty: c.qty });
     }
   });
-  saveStockToBackend(stockUpdates);
+  saveStockToBackend(stockUpdates, newOrder);
   cart = [];
   renderCart();
   renderProducts();
@@ -2601,13 +2604,18 @@ async function loadOrdersFromBackend() {
   } catch (e) { console.error('loadOrders error:', e); }
 }
 async function saveOrderToBackend(order) {
-  await turso(`INSERT INTO orders (id, date, emp_id, name, req_type, note, items, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-    { type: 'integer', value: order.id }, { type: 'text', value: order.date || today() },
-    { type: 'text', value: order.empId || '' }, { type: 'text', value: order.name || '' },
-    { type: 'text', value: order.reqType || '' }, { type: 'text', value: order.note || '' },
-    { type: 'text', value: JSON.stringify(order.items || []) }, { type: 'float', value: order.total || 0 },
-    { type: 'text', value: order.status || 'pending' }
-  ]);
+  try {
+    const r = await turso(`INSERT INTO orders (id, date, emp_id, name, req_type, note, items, total, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+      { type: 'integer', value: order.id }, { type: 'text', value: order.date || today() },
+      { type: 'text', value: order.empId || '' }, { type: 'text', value: order.name || '' },
+      { type: 'text', value: order.reqType || '' }, { type: 'text', value: order.note || '' },
+      { type: 'text', value: JSON.stringify(order.items || []) }, { type: 'float', value: order.total || 0 },
+      { type: 'text', value: order.status || 'pending' }
+    ]);
+    const ok = r && r.affected_row_count > 0;
+    if (!ok) console.error('Order save failed:', JSON.stringify(r).substring(0, 300));
+    return ok;
+  } catch (e) { console.error('Order save error:', e); return false; }
 }
 async function saveOrderStatusToBackend(id, status) {
   await turso('UPDATE orders SET status = ? WHERE id = ?', [
@@ -2616,7 +2624,7 @@ async function saveOrderStatusToBackend(id, status) {
 }
 
 // --- Stock updates ---
-async function saveStockToBackend(updates) {
+async function saveStockToBackend(updates, order) {
   for (const u of updates) {
     await turso('UPDATE products SET stock = ? WHERE id = ?', [
       { type: 'integer', value: u.stock }, { type: 'integer', value: u.id }
@@ -2624,10 +2632,11 @@ async function saveStockToBackend(updates) {
     // Log stock deduction
     const p = PRODUCTS.find(x => x.id === u.id);
     if (p) {
-      await turso(`INSERT INTO stock_history (date, product_id, product_code, product_name, type, qty, balance, by_whom, note) VALUES (?, ?, ?, ?, 'deduct', ?, ?, 'system', '')`, [
+      await turso(`INSERT INTO stock_history (date, product_id, product_code, product_name, type, qty, balance, by_whom, note) VALUES (?, ?, ?, ?, 'requisition', ?, ?, ?, '')`, [
         { type: 'text', value: today() }, { type: 'integer', value: u.id },
         { type: 'text', value: p.code || '' }, { type: 'text', value: p.name },
-        { type: 'integer', value: u.qty || 0 }, { type: 'integer', value: u.stock }
+        { type: 'integer', value: -(u.qty || 0) }, { type: 'integer', value: u.stock },
+        { type: 'text', value: 'order #' + order?.id || '' }
       ]);
     }
   }

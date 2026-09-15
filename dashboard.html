@@ -159,7 +159,11 @@ async function turso(sql, args) {
       body: JSON.stringify(body)
     });
     const json = await res.json();
-    return json.results ? json.results[0] : json;
+    if (json.results && json.results[0] && json.results[0].type === 'ok') {
+      return json.results[0].response.result;
+    }
+    console.error('Turso query failed:', JSON.stringify(json).substring(0, 300));
+    return { cols: [], rows: [] };
   } catch (e) { console.error('Turso error:', e); return { cols: [], rows: [] }; }
 }
 function tursoRows(r) {
@@ -198,15 +202,30 @@ async function loadDashboard() {
     allProducts = tursoRows(prodR);
     allOrders = tursoRows(orderR);
     allHistory = tursoRows(histR);
-    // Parse items JSON
-    allOrders.forEach(o => { try { o.items = JSON.parse(o.items || '[]'); } catch(e) { o.items = []; } });
-  } catch (e) { console.error('Load error:', e); }
+    // Turso returns numbers as strings — coerce, and parse items JSON
+    allOrders.forEach(o => {
+      o.total = Number(o.total) || 0;
+      o.id = Number(o.id) || 0;
+      try { o.items = typeof o.items === 'string' ? JSON.parse(o.items || '[]') : (o.items || []); } catch(e) { o.items = []; }
+      (o.items || []).forEach(i => { i.qty = Number(i.qty) || 0; i.price = Number(i.price) || 0; });
+    });
+    allHistory.forEach(h => { h.qty = Number(h.qty) || 0; h.balance = Number(h.balance) || 0; });
+  } catch (e) {
+    console.error('Load error:', e);
+    document.getElementById('dashboardContent').innerHTML = '<div class="loading"><p style="color:#c0392b">❌ โหลดข้อมูลไม่สำเร็จ: ' + (e.message || e) + '</p><p style="font-size:12px;color:#636e72;margin-top:8px">ตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วรีเฟรชหน้า</p></div>';
+    return;
+  }
 
   // Filter by month
   const orders = allOrders.filter(o => o.date && String(o.date).substring(0, 7) === month && o.status !== 'deleted');
   const history = allHistory.filter(h => h.date && String(h.date).substring(0, 7) === month);
 
-  renderDashboard(orders, history, month);
+  try {
+    renderDashboard(orders, history, month);
+  } catch (e) {
+    console.error('Render error:', e);
+    document.getElementById('dashboardContent').innerHTML = '<div class="loading"><p style="color:#c0392b">❌ แสดงผลไม่สำเร็จ: ' + (e.message || e) + '</p></div>';
+  }
 }
 
 function renderDashboard(orders, history, month) {
@@ -219,7 +238,7 @@ function renderDashboard(orders, history, month) {
   const approvedOrders = orders.filter(o => o.status === 'approved').length;
   const rejectedOrders = orders.filter(o => o.status === 'rejected').length;
   const restocks = history.filter(h => h.type === 'restock');
-  const requisitions = history.filter(h => h.type === 'requisition');
+  const requisitions = history.filter(h => h.type === 'requisition' || h.type === 'deduct');
   const totalRestockQty = restocks.reduce((s, h) => s + h.qty, 0);
   const totalRequisitionQty = requisitions.reduce((s, h) => s + Math.abs(h.qty), 0);
 
