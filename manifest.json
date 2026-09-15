@@ -1,0 +1,11 @@
+{
+  "name": "Stationary CJ Logistices — ระบบเบิกอุปกรณ์สำนักงาน",
+  "short_name": "Stationary CJ",
+  "description": "ระบบเบิกอุปกรณ์สำนักงาน Stationary CJ Logistices",
+  "start_url": "./requisition.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#667eea",
+  "theme_color": "#667eea",
+  "icons": []
+}
