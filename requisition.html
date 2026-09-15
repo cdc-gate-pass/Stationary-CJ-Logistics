@@ -2510,8 +2510,8 @@ document.addEventListener('keydown', e => {
 // TURSO DATABASE API
 // =============================================
 async function turso(sql, args) {
-  // Turso HTTP API requires all arg values as strings
-  const stmt = args ? { sql, args: args.map(a => ({ type: a.type, value: String(a.value) })) } : { sql };
+  // Turso HTTP API: integer/text as strings, float MUST be actual numbers
+  const stmt = args ? { sql, args: args.map(a => ({ type: a.type, value: a.type === 'float' ? (Number(a.value) || 0) : String(a.value) })) } : { sql };
   try {
     const res = await fetch(TURSO_URL, {
       method: 'POST',
